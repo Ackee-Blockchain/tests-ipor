@@ -1,3 +1,6 @@
 [submodule "source"]
 	path = source
 	url = https://github.com/IPOR-Labs/ipor-protocol.git
+[submodule "v1"]
+	path = v1
+	url = https://github.com/IPOR-Labs/ipor-protocol.git
