@@ -1,7 +1,7 @@
 import pytest
 
-from woke.testing import *
-from woke.testing.fuzzing import random_int
+from wake.testing import *
+from wake.testing.fuzzing import random_int
 from pytypes.source.contracts.interfaces.IStrategy import IStrategy
 from pytypes.source.contracts.vault.interfaces.aave.AaveLendingPoolV2 import AaveLendingPoolV2
 from pytypes.source.contracts.vault.strategies.StrategyAave import StrategyAave

@@ -1,7 +1,7 @@
 from typing import Tuple, Type
 import pytest
 
-from woke.testing import *
+from wake.testing import *
 from pytypes.source.contracts.amm.AmmStorage import AmmStorage
 from pytypes.source.contracts.amm.libraries.SoapIndicatorRebalanceLogic import SoapIndicatorRebalanceLogic
 from pytypes.source.contracts.interfaces.types.AmmStorageTypes import AmmStorageTypes

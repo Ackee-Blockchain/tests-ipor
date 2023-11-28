@@ -1,6 +1,6 @@
 from typing import Union
 
-from woke.testing import Address, Account, default_chain, keccak256, Abi
+from wake.testing import Address, Account, default_chain, keccak256, Abi
 from pytypes.openzeppelin.contracts.proxy.ERC1967.ERC1967Proxy import ERC1967Proxy
 
 

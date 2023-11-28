@@ -1,4 +1,4 @@
-from woke.testing import *
+from wake.testing import *
 
 from pytypes.tests.PauseMock import PauseMock
 from .utils import deploy_with_proxy
@@ -10,12 +10,12 @@ def test_pause():
 
     # deploy contract
     pause = PauseMock.deploy()
-    
+
     # add
     assert pause.isPauseGuardian(owner.address) == False
     pause.addPauseGuardian(owner)
     assert pause.isPauseGuardian(owner.address) == True
-    
+
     # remove
     pause.removePauseGuardian(owner)
     assert pause.isPauseGuardian(owner.address) == False

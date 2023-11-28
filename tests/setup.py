@@ -1,5 +1,5 @@
-from woke.testing import *
-from woke.testing.fuzzing import random_address
+from wake.testing import *
+from wake.testing.fuzzing import random_address
 from pytypes.source.contracts.amm.AmmCloseSwapService import AmmCloseSwapService
 from pytypes.source.contracts.amm.AmmGovernanceService import AmmGovernanceService
 from pytypes.source.contracts.amm.AmmOpenSwapService import AmmOpenSwapService

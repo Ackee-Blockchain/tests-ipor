@@ -1,0 +1,25 @@
+[compiler.solc]
+include_paths = [
+    "source/node_modules",
+]
+evm_version = "london"
+exclude_paths = [
+    "source/node_modules",
+    "source/lib",
+    "source/old_test",
+    "source/test",
+    "source/scripts",
+    "v1/contracts/amm",
+    "v1/contracts/facades",
+    "v1/contracts/itf",
+    "v1/contracts/libraries",
+    "v1/contracts/mocks",
+    "v1/contracts/oracles",
+    "v1/contracts/security",
+    "v1/contracts/tokens",
+    "v1/contracts/vault",
+    "v1/test",
+]
+
+[compiler.solc.optimizer]
+enabled = true

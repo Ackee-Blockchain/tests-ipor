@@ -1,4 +1,4 @@
-from woke.testing import *
+from wake.testing import *
 
 from pytypes.tests.OwnableMock import OwnableMock, OwnableMockUpgradeable
 from .utils import deploy_with_proxy
@@ -21,16 +21,16 @@ def test_ownable():
     ownable.confirmTransferOwnership(from_=new_owner)
     assert ownable.owner() == new_owner.address
 
-    # renounce ownership    
+    # renounce ownership
     ownable.renounceOwnership(from_=new_owner)
     assert ownable.owner() == Address.ZERO
-    
+
 @default_chain.connect()
 def test_ownable_upgradeable():
     owner = default_chain.accounts[0]
     default_chain.set_default_accounts(owner)
 
-    # deploy upgradeable contract   
+    # deploy upgradeable contract
     ownable = deploy_with_proxy(OwnableMockUpgradeable)
     ownable.initialize()
     assert ownable.owner() == owner.address
@@ -44,7 +44,7 @@ def test_ownable_upgradeable():
     ownable.confirmTransferOwnership(from_=new_owner)
     assert ownable.owner() == new_owner.address
 
-    # renounce ownership    
+    # renounce ownership
     ownable.renounceOwnership(from_=new_owner)
     assert ownable.owner() == Address.ZERO
 
@@ -61,15 +61,15 @@ def test_owner_manager():
     new_owner = default_chain.accounts[1]
     ownable.transferOwnershipLibrary(new_owner)
     assert ownable.getOwnerLibrary() == new_owner.address
-    
+
     # appoint ownership
     ownable.appointToOwnershipLibrary(owner, from_=new_owner)
     assert ownable.getOwnerLibrary() == new_owner.address
-    
+
     # confirm ownership
     ownable.confirmAppointmentToOwnershipLibrary(from_=owner)
     assert ownable.getOwnerLibrary() == owner.address
-    
+
     # renounce ownership
     ownable.renounceOwnershipLibrary(from_=owner)
     assert ownable.getOwnerLibrary() == Address.ZERO
@@ -88,15 +88,15 @@ def test_owner_manager_upgradeable():
     new_owner = default_chain.accounts[1]
     ownable.transferOwnershipLibrary(new_owner)
     assert ownable.getOwnerLibrary() == new_owner.address
-    
+
     # appoint ownership
     ownable.appointToOwnershipLibrary(owner, from_=new_owner)
     assert ownable.getOwnerLibrary() == new_owner.address
-    
+
     # confirm ownership
     ownable.confirmAppointmentToOwnershipLibrary(from_=owner)
     assert ownable.getOwnerLibrary() == owner.address
-    
+
     # renounce ownership
     ownable.renounceOwnershipLibrary(from_=owner)
     assert ownable.getOwnerLibrary() == Address.ZERO
