@@ -1,6 +1,6 @@
 from pytypes.source.contracts.libraries.math.IporMath import IporMath
 from pytypes.tests.MathMock import MathMock
-from woke.testing import *
+from wake.testing import *
 
 import random
 import decimal

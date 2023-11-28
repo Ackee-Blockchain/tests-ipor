@@ -1,7 +1,7 @@
 import pytest
 
-from woke.testing import *
-from woke.testing.fuzzing import random_int
+from wake.testing import *
+from wake.testing.fuzzing import random_int
 from pytypes.source.contracts.interfaces.IStrategy import IStrategy
 from pytypes.source.contracts.interfaces.IStrategyCompound import IStrategyCompound
 from pytypes.source.contracts.vault.strategies.StrategyCompound import StrategyCompound

@@ -1,7 +1,7 @@
 import math
 
-from woke.testing import *
-from woke.testing.fuzzing import random_int
+from wake.testing import *
+from wake.testing.fuzzing import random_int
 
 from pytypes.tests.InterestRatesMock import InterestRatesMock
 

@@ -1,6 +1,6 @@
 import pytest
 
-from woke.testing import *
+from wake.testing import *
 from pytypes.source.contracts.interfaces.IStrategy import IStrategy
 from pytypes.source.contracts.tokens.IvToken import IvToken
 from pytypes.source.contracts.vault.AssetManagementDai import AssetManagementDai
@@ -69,7 +69,7 @@ def setup_asset_management_usdt():
 
         aave_strategy, *_ = setup_aave_usdt()
         compound_strategy, *_ = setup_compound_usdt()
-        
+
         asset_management.initialize(usdt, ivusdt, aave_strategy, compound_strategy)
         yield asset_management, usdt, ivusdt, aave_strategy, compound_strategy
 
