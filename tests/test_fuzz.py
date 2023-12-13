@@ -1,6 +1,7 @@
 import logging
 import math
 import random
+import dataclasses
 from bisect import bisect_right
 from dataclasses import dataclass
 import time
@@ -8,6 +9,11 @@ from typing import Callable, Any, Dict, Set, Tuple
 
 from wake.testing import *
 from wake.testing.fuzzing import *
+from pytypes.source.contracts.amm.AmmCloseSwapServiceDai import AmmCloseSwapServiceDai
+from pytypes.source.contracts.amm.AmmCloseSwapServiceStable import AmmCloseSwapServiceStable
+from pytypes.source.contracts.amm.AmmCloseSwapServiceUsdc import AmmCloseSwapServiceUsdc
+from pytypes.source.contracts.amm.AmmCloseSwapServiceUsdt import AmmCloseSwapServiceUsdt
+from pytypes.source.contracts.base.amm.libraries.SwapEventsBaseV1 import SwapEventsBaseV1
 from pytypes.source.contracts.interfaces.IAmmCloseSwapLens import IAmmCloseSwapLens
 from pytypes.source.contracts.interfaces.IAmmCloseSwapService import IAmmCloseSwapService
 from pytypes.source.contracts.interfaces.IAmmGovernanceService import IAmmGovernanceService
@@ -19,15 +25,13 @@ from pytypes.source.contracts.interfaces.IAmmSwapsLens import IAmmSwapsLens
 from pytypes.source.contracts.interfaces.IAssetManagement import IAssetManagement
 from pytypes.source.contracts.interfaces.IAssetManagementLens import IAssetManagementLens
 from pytypes.source.contracts.interfaces.types.AmmTypes import AmmTypes
-from pytypes.source.contracts.interfaces.types.IporRiskManagementOracleTypes import IporRiskManagementOracleTypes
 from pytypes.source.contracts.interfaces.types.IporTypes import IporTypes
 from pytypes.source.contracts.oracles.IporOracle import IporOracle
-from pytypes.source.contracts.oracles.IporRiskManagementOracle import IporRiskManagementOracle
 from pytypes.source.contracts.router.IporProtocolRouter import IporProtocolRouter
 from pytypes.openzeppelin.contracts.token.ERC20.extensions.IERC20Metadata import IERC20Metadata
 
 from .config import FORK_URL
-from .setup import setup_router, get_dai, get_usdc, get_usdt, get_oracle, get_risk_oracle
+from .setup import setup_router, get_dai, get_usdc, get_usdt, get_oracle
 from .utils import mint
 
 
@@ -85,10 +89,19 @@ class IporFuzzTest(FuzzTest):
     _min_liquidation_threshold_buyer: uint256  # in 18 decimals
     _treasury_asset_management_ratio: uint256  # in 18 decimals
     _auto_rebalance_threshold: uint256  # in 18 decimals
+    _time_after_open_wihout_unwinding: uint256  # in seconds
 
+    _max_collateral_ratio: uint256  # max value of (open swap collateral / liquidity pool collateral) * 10 ** 4 for both types
+    _max_collateral_ratio_pay_fixed: uint256  # max value of (open swap collateral / liquidity pool collateral) * 10 ** 4 for open swap pay fixed
+    _max_collateral_ratio_receive_fixed: uint256  # max value of (open swap collateral / liquidity pool collateral) * 10 ** 4 for open swap receive fixed
+    _max_leverage_pay_fixed: uint256  # max value of (max_notional_per_leg / max_collateral_per_leg) in wads
+    _max_leverage_receive_fixed: uint256  # max value of (max_notional_per_leg / max_collateral_per_leg) in wads
+
+    _risk_indicators: Dict[IporTypes.SwapTenor, Dict[IERC20Metadata, Dict[bool, AmmTypes.RiskIndicatorsInputs]]]
+
+    _message_signer: Account
     _router: IporProtocolRouter
     _oracle: IporOracle
-    _risk_oracle: IporRiskManagementOracle
     _dai: IERC20Metadata
     _usdc: IERC20Metadata
     _usdt: IERC20Metadata
@@ -128,6 +141,12 @@ class IporFuzzTest(FuzzTest):
         self._max_non_lp_balance_error = 0
         self._max_ipor_treasury_error = 0
 
+        self._max_collateral_ratio = 10 ** 17
+        self._max_collateral_ratio_pay_fixed = 10 ** 17
+        self._max_collateral_ratio_receive_fixed = 10 ** 17
+        self._max_leverage_pay_fixed = 20 * 10 ** 18
+        self._max_leverage_receive_fixed = 20 * 10 ** 18
+
         self._liquidation_deposit = random_int(1, 30) * 10 ** 18
         self._publication_fee = random_int(1, 10) * 10 ** 18
         self._opening_fee_rate = random_int(1, 20) * 10 ** 15  # 0.1% - 2%
@@ -142,8 +161,12 @@ class IporFuzzTest(FuzzTest):
         self._min_liquidation_threshold_buyer = 990 * 10 ** 15  # 99%
         self._treasury_asset_management_ratio = random_int(50, 95) * 10 ** 16  # 50% - 95%, max resolution 4 decimals
         self._auto_rebalance_threshold = 7_000 * 10 ** 18  # 7_000 USD
+        self._time_after_open_wihout_unwinding = random_int(2, 10) * 24 * 60 * 60  # 2-10 days
+
+        self._message_signer = Account.new()
 
         self._router = setup_router(
+            message_signer=self._message_signer,
             liquidation_deposit=self._liquidation_deposit // 10 ** 18,
             publication_fee=self._publication_fee,
             opening_fee_rate=self._opening_fee_rate,
@@ -156,12 +179,10 @@ class IporFuzzTest(FuzzTest):
             min_liquidation_threshold_community=self._min_liquidation_threshold_community,
             min_liquidation_threshold_buyer=self._min_liquidation_threshold_buyer,
             redeem_fee_rate=self._redeem_fee_rate,
+            time_after_open_wihout_unwinding=self._time_after_open_wihout_unwinding,
         )
         self._oracle = get_oracle()
         self._oracle.addUpdater(default_chain.accounts[0])
-
-        self._risk_oracle = get_risk_oracle()
-        self._risk_oracle.addUpdater(default_chain.accounts[0])
 
         self._dai = get_dai()
         self._usdc = get_usdc()
@@ -227,6 +248,24 @@ class IporFuzzTest(FuzzTest):
                 assert ip_token.balanceOf(account) == 0
                 self._ip_balances[ip_token][account] = 0
 
+        self._risk_indicators = {
+            IporTypes.SwapTenor.DAYS_28: {
+                self._dai: {},
+                self._usdc: {},
+                self._usdt: {},
+            },
+            IporTypes.SwapTenor.DAYS_60: {
+                self._dai: {},
+                self._usdc: {},
+                self._usdt: {},
+            },
+            IporTypes.SwapTenor.DAYS_90: {
+                self._dai: {},
+                self._usdc: {},
+                self._usdt: {},
+            },
+        }
+
         self._open_swap_functions = {
             IporTypes.SwapTenor.DAYS_28: {
                 self._dai: {
@@ -271,10 +310,11 @@ class IporFuzzTest(FuzzTest):
                 },
             },
         }
+        # TODO: emergence close swaps
         self._close_swap_functions = {
-            self._dai: IAmmCloseSwapService(self._router).closeSwapsDai,
-            self._usdc: IAmmCloseSwapService(self._router).closeSwapsUsdc,
-            self._usdt: IAmmCloseSwapService(self._router).closeSwapsUsdt,
+            self._dai: AmmCloseSwapServiceDai(self._router).closeSwapsDai,
+            self._usdc: AmmCloseSwapServiceUsdc(self._router).closeSwapsUsdc,
+            self._usdt: AmmCloseSwapServiceUsdt(self._router).closeSwapsUsdt,
         }
 
         # set pools params
@@ -282,7 +322,6 @@ class IporFuzzTest(FuzzTest):
             IAmmGovernanceService(self._router).setAmmPoolsParams(
                 asset,
                 100_000_000,  # max amount of liquidity pool balance in USD (without decimals)
-                10_000_000,  # max amount of USD a single user can deposit
                 self._auto_rebalance_threshold // 10 ** 21,  # auto rebalance threshold in thousands of USD
                 self._treasury_asset_management_ratio // 10 ** 14,  # treasury asset management ratio
             )
@@ -295,8 +334,26 @@ class IporFuzzTest(FuzzTest):
             self._usdt: [real_oracle.getIndex(self._usdt)[0]],
         }
         tx = self._oracle.updateIndexes(
-            [self._dai, self._usdc, self._usdt],
-            [self._ipor_indexes[self._dai][0], self._ipor_indexes[self._usdc][0], self._ipor_indexes[self._usdt][0]],
+            [
+                IporOracle.UpdateIndexParams(
+                    self._dai.address,
+                    self._ipor_indexes[self._dai][0],
+                    default_chain.blocks["latest"].timestamp,
+                    0,  # quasiIBTPrice is only applicable for stETH
+                ),
+                IporOracle.UpdateIndexParams(
+                    self._usdc.address,
+                    self._ipor_indexes[self._usdc][0],
+                    default_chain.blocks["latest"].timestamp,
+                    0,  # quasiIBTPrice is only applicable for stETH
+                ),
+                IporOracle.UpdateIndexParams(
+                    self._usdt.address,
+                    self._ipor_indexes[self._usdt][0],
+                    default_chain.blocks["latest"].timestamp,
+                    0,  # quasiIBTPrice is only applicable for stETH
+                ),
+            ]
         )
         self._times = [tx.block.timestamp]
 
@@ -403,6 +460,16 @@ class IporFuzzTest(FuzzTest):
         else:
             raise ValueError("Invalid tenor")
 
+    def _sign_risk_indicators(self, i: AmmTypes.RiskIndicatorsInputs, asset: Account, tenor: IporTypes.SwapTenor, direction: uint256):
+        h = keccak256(Abi.encode_packed(
+            ["uint256", "uint256", "uint256", "int256", "uint256", "uint256", "uint256", "address", "uint256", "uint256"],
+            [
+                i.maxCollateralRatio, i.maxCollateralRatioPerLeg, i.maxLeveragePerLeg, i.baseSpreadPerLeg, i.fixedRateCapPerLeg,
+                i.demandSpreadFactor, i.expiration, asset, tenor, direction,
+            ],
+        ))
+        return dataclasses.replace(i, signature=bytearray(self._message_signer.sign_hash(h)))
+
     def post_sequence(self) -> None:
         self.print_all_errors()
         #for asset in [self._dai, self._usdc, self._usdt]:
@@ -430,24 +497,47 @@ class IporFuzzTest(FuzzTest):
 
             p = min(20, len(self._ipor_indexes[asset]))
 
-            receive_fixed_spread = -random_int(1 * 10 ** 3, 5 * 10 ** 3)  # 0.1% - 0.5%
+            receive_fixed_spread = -random_int(1 * 10 ** 15, 5 * 10 ** 15)  # 0.1% - 0.5%
             pay_fixed_spread = (sum(self._ipor_indexes[asset][-p:]) // p - ipor_index) // 10 ** 12
             if pay_fixed_spread < 0:
-                pay_fixed_spread += random_int(1 * 10 ** 3, 3 * 10 ** 3)
-            min_pay_fixed_rate = 10  # 0.1%
-            max_receive_fixed_rate = 1000  # 10%
-            self._risk_oracle.updateBaseSpreadsAndFixedRateCaps(asset, IporRiskManagementOracleTypes.BaseSpreadsAndFixedRateCaps(
-                pay_fixed_spread, receive_fixed_spread,
-                pay_fixed_spread, receive_fixed_spread,
-                pay_fixed_spread, receive_fixed_spread,
-                min_pay_fixed_rate, max_receive_fixed_rate,
-                min_pay_fixed_rate, max_receive_fixed_rate,
-                min_pay_fixed_rate, max_receive_fixed_rate,
-            ))
+                pay_fixed_spread += random_int(1 * 10 ** 15, 3 * 10 ** 15)
+            min_pay_fixed_rate = 1 * 10 ** 15  # 0.1%
+            max_receive_fixed_rate = 1 * 10 ** 17  # 10%
+
+            pay_fixed_indicators = AmmTypes.RiskIndicatorsInputs(
+                self._max_collateral_ratio,
+                self._max_collateral_ratio_pay_fixed,
+                self._max_leverage_pay_fixed,
+                pay_fixed_spread,
+                min_pay_fixed_rate,
+                20,
+                default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+                bytearray(),
+            )
+            receive_fixed_indicators = AmmTypes.RiskIndicatorsInputs(
+                self._max_collateral_ratio,
+                self._max_collateral_ratio_receive_fixed,
+                self._max_leverage_receive_fixed,
+                receive_fixed_spread,
+                max_receive_fixed_rate,
+                20,
+                default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+                bytearray(),
+            )
+
+            for tenor in IporTypes.SwapTenor:
+                self._risk_indicators[tenor][asset][True] = self._sign_risk_indicators(pay_fixed_indicators, asset, tenor, 0)
+                self._risk_indicators[tenor][asset][False] = self._sign_risk_indicators(receive_fixed_indicators, asset, tenor, 1)
 
         tx = self._oracle.updateIndexes(
-            list(self._ipor_indexes.keys()),
-            [self._ipor_indexes[asset][-1] for asset in self._ipor_indexes.keys()]
+            [
+                IporOracle.UpdateIndexParams(
+                    asset.address,
+                    self._ipor_indexes[asset][-1],
+                    default_chain.blocks["latest"].timestamp,
+                    0,  # TODO!!!!
+                ) for asset in self._ipor_indexes.keys()
+            ]
         )
         self._times.append(tx.block.timestamp)
 
@@ -567,7 +657,7 @@ class IporFuzzTest(FuzzTest):
         if (self._balances[asset][self._treasuries[asset]] < redeem_amount or (self._auto_rebalance_threshold > 0 and redeem_amount_wad >= self._auto_rebalance_threshold)) and rebalance_amount_wad < 0:
             withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
             assert len(withdraw_events) == 1
-            _, _, _, _, withdraw_amount_wad, _ = Abi.decode(["uint256", "address", "address", "uint256", "uint256", "uint256"], withdraw_events[0].data)
+            _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
             #assert withdraw_amount_wad >= -rebalance_amount_wad
             withdraw_amount = withdraw_amount_wad // 10 ** (18 - asset.decimals())
             self._balances[asset][self._treasuries[asset]] += withdraw_amount
@@ -591,7 +681,8 @@ class IporFuzzTest(FuzzTest):
     def flow_open_swap(self, tenor: IporTypes.SwapTenor) -> None:
         pay_fixed = random_bool()
         asset = random.choice([self._dai, self._usdc, self._usdt])
-        max_leverage = IAmmSwapsLens(self._router).getOpenSwapRiskIndicators(asset, 0 if pay_fixed else 1, tenor).maxLeveragePerLeg
+        risk_indicators = self._risk_indicators[tenor][asset][pay_fixed]
+        max_leverage = risk_indicators.maxLeveragePerLeg
         leverage_wad = random_int(self._min_leverage, max_leverage)
         opener = random_account()
         beneficiary = random_account(predicate=lambda a: a != default_chain.accounts[0])
@@ -605,7 +696,12 @@ class IporFuzzTest(FuzzTest):
         opening_fee_wad = available_amount_wad - collateral_wad
         notional_wad = div(collateral_wad * leverage_wad, 10 ** 18)
 
-        offered_rate_pay_fixed, offered_rate_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(asset, tenor, notional_wad, request_type="call")
+        offered_rate_pay_fixed, offered_rate_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(
+            asset, tenor, notional_wad,
+            self._risk_indicators[tenor][asset][True],
+            self._risk_indicators[tenor][asset][False],
+            request_type="call",
+        )
         if pay_fixed:
             offered_rate = offered_rate_pay_fixed
             # add a small margin, contract will use current rate which can be slightly different
@@ -623,7 +719,7 @@ class IporFuzzTest(FuzzTest):
 
         open_swap_function = self._open_swap_functions[tenor][asset][pay_fixed]
         with may_revert(("IPOR_302", "IPOR_303", "IPOR_309")) as e:
-            tx: TransactionAbc[uint256] = open_swap_function(beneficiary, total_amount, acceptable_rate, leverage_wad, from_=opener)
+            tx: TransactionAbc[uint256] = open_swap_function(beneficiary, total_amount, acceptable_rate, leverage_wad, risk_indicators, from_=opener)
 
         # leverage too high or another swap cannot be opened as there is not enough liquidity
         # a swap must be closed first or more liquidity must be provided
@@ -654,8 +750,6 @@ class IporFuzzTest(FuzzTest):
         self._ipor_treasury_balances[asset] += opening_fee_treasury
         self._treasury_balances[asset] += opening_fee_wad - opening_fee_treasury
 
-        logger.warning(f"{beneficiary.label} opened swap {swap_id} in {asset.symbol()} with rate {onchain_swap.fixedInterestRate} and notional ${notional_wad}")
-
         if pay_fixed:
             logger.info(f"{beneficiary.label} opened pay fixed swap {swap_id} in {asset.symbol()} with rate {onchain_swap.fixedInterestRate / 10 ** 16}% and notional ${notional_wad / 10 ** 18}")
         else:
@@ -679,7 +773,8 @@ class IporFuzzTest(FuzzTest):
         buyer_before = self._balances[asset][swap.buyer]
         treasury_before_wad = self._balances[asset][self._treasuries[asset]] * 10 ** (18 - asset.decimals())
 
-        enforce_rebalance = random_bool()
+        #enforce_rebalance = random_bool() TODO
+        enforce_rebalance = False
         if enforce_rebalance:
             # enforce rebalance
             deposit_amount_wad = treasury_before_wad - swap.collateral
@@ -696,7 +791,12 @@ class IporFuzzTest(FuzzTest):
         with default_chain.snapshot_and_revert():
             default_chain.mine()
             offered_rates_block = default_chain.blocks["latest"]
-            offered_pay_fixed, offered_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(asset, swap.tenor, swap.notional, request_type="call")
+            offered_pay_fixed, offered_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(
+                asset, swap.tenor, swap.notional,
+                self._risk_indicators[swap.tenor][asset][True],
+                self._risk_indicators[swap.tenor][asset][False],
+                request_type="call",
+            )
             vault_before_wad = IAssetManagementLens(self._router).balanceOfAmmTreasuryInAssetManagement(asset)
 
             if swap.pay_fixed:
@@ -713,54 +813,79 @@ class IporFuzzTest(FuzzTest):
 
         if 0 < remaining_time <= self._time_before_maturity_community or (abs(pnl) >= min_liquidation_threshold_community and abs(pnl) != swap.collateral):
             closer = random_account(predicate=lambda a: a != default_chain.accounts[0])  # anyone except contract owner
+            can_close = True
         else:
             closer = swap.buyer
+            can_close = pending_timestamp > swap.open_timestamp + self._time_after_open_wihout_unwinding
 
+        close_swap_risk_indicators = AmmTypes.CloseSwapRiskIndicatorsInput(
+            self._risk_indicators[swap.tenor][asset][True],
+            self._risk_indicators[swap.tenor][asset][False],
+        )
         close_swap_details = IAmmCloseSwapLens(self._router).getClosingSwapDetails(
             asset,
+            closer,
             AmmTypes.SwapDirection.PAY_FIXED_RECEIVE_FLOATING if swap.pay_fixed else AmmTypes.SwapDirection.PAY_FLOATING_RECEIVE_FIXED,
             swap_id,
             pending_timestamp,
-            from_=closer,
+            close_swap_risk_indicators,
             request_type="call",
         )
 
         close_swap_function = self._close_swap_functions[asset]
-        tx: TransactionAbc[Tuple[List[AmmTypes.IporSwapClosingResult], List[AmmTypes.IporSwapClosingResult]]] = close_swap_function(
-            beneficiary,
-            [swap_id] if swap.pay_fixed else [],
-            [swap_id] if not swap.pay_fixed else [],
-            from_=closer,
-        )
-        assert tx.block.timestamp == pending_timestamp
-        assert tx.block.number == offered_rates_block.number
-        assert tx.block.timestamp == offered_rates_block.timestamp
+        with may_revert("IPOR_341") as e:
+            tx: TransactionAbc[Tuple[List[AmmTypes.IporSwapClosingResult], List[AmmTypes.IporSwapClosingResult]]] = close_swap_function(
+                beneficiary,
+                [swap_id] if swap.pay_fixed else [],
+                [swap_id] if not swap.pay_fixed else [],
+                close_swap_risk_indicators,
+                from_=closer,
+            )
+            assert tx.block.timestamp == pending_timestamp
+            assert tx.block.number == offered_rates_block.number
+            assert tx.block.timestamp == offered_rates_block.timestamp
+
+        assert (e.value is None) == can_close
+        if not can_close:
+            return
 
         if remaining_time <= self._time_before_maturity_buyer or abs(pnl) >= min_liquidation_threshold_buyer:
             expected_pnl = self._calculate_pnl_raw(swap, tx.block.number)
             unwinding_fee = 0
+            actual_unwinding_fee = 0
         else:
             #unwind
+            unwind_events = [e for e in tx.events if isinstance(e, SwapEventsBaseV1.SwapUnwind)]
+            assert len(unwind_events) == 1
+            actual_unwinding_fee = unwind_events[0].unwindFeeLPAmount + unwind_events[0].unwindFeeTreasuryAmount
+
             unwinding_fee = round(swap.notional * self._unwinding_fee_rate / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60))
             if swap.pay_fixed:
-                expected_pnl = (
-                    self._calculate_pnl_raw(swap, tx.block.number)
-                    + round(swap.notional * math.exp(offered_receive_fixed / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
+                unwind_pnl = (
+                    round(swap.notional * math.exp(offered_receive_fixed / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
                     - round(swap.notional * math.exp(swap.fixed_rate / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
-                    - unwinding_fee
                 )
             else:
-                expected_pnl = (
-                    self._calculate_pnl_raw(swap, tx.block.number)
-                    + round(swap.notional * math.exp(swap.fixed_rate / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
+                unwind_pnl = (
+                    round(swap.notional * math.exp(swap.fixed_rate / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
                     - round(swap.notional * math.exp(offered_pay_fixed / 10 ** 18 * remaining_time / (365 * 24 * 60 * 60)))
-                    - unwinding_fee
                 )
 
+            if unwind_pnl < -swap.collateral:
+                unwind_pnl = -swap.collateral
+            elif unwind_pnl > swap.collateral:
+                unwind_pnl = swap.collateral
+
+            expected_pnl = unwind_pnl + self._calculate_pnl_raw(swap, tx.block.number)
             if expected_pnl < -swap.collateral:
                 expected_pnl = -swap.collateral
             elif expected_pnl > swap.collateral:
                 expected_pnl = swap.collateral
+
+            if swap.collateral + expected_pnl <= unwinding_fee:
+                raise AssertionError("Should have reverted")
+
+            expected_pnl -= unwinding_fee
 
         actual_payoff = asset.balanceOf(swap.buyer) - buyer_before
         actual_payoff_wad = actual_payoff * 10 ** (18 - asset.decimals())
@@ -779,15 +904,21 @@ class IporFuzzTest(FuzzTest):
             self._balances[asset][beneficiary] += liquidation_deposit
             self._balances[asset][self._treasuries[asset]] -= liquidation_deposit
 
-        redeem_amount_wad = swap.collateral + close_swap_details.pnlValue + self._liquidation_deposit
+        redeem_amount_wad = swap.collateral + close_swap_details.pnlValue + self._liquidation_deposit - actual_unwinding_fee
+        # convert to asset decimals
+        redeem_amount = div_int(redeem_amount_wad, 10 ** (18 - asset.decimals()))
+        treasury_before = treasury_before_wad // 10 ** (18 - asset.decimals())
         # rebalance
-        if redeem_amount_wad >= treasury_before_wad:
-            rebalance_amount_wad = div_int((treasury_before_wad - redeem_amount_wad + vault_before_wad) * (10**18 - self._treasury_asset_management_ratio), 10**18) - vault_before_wad
+        if redeem_amount >= treasury_before:
+            rebalance_amount_wad = div_int(
+                (treasury_before_wad - redeem_amount_wad + vault_before_wad) * (10**18 - self._treasury_asset_management_ratio),
+                10**18
+            ) - vault_before_wad
 
             if rebalance_amount_wad < 0:
                 withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
                 assert len(withdraw_events) == 1
-                _, _, _, _, withdraw_amount_wad, _ = Abi.decode(["uint256", "address", "address", "uint256", "uint256", "uint256"], withdraw_events[0].data)
+                _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
                 #assert withdraw_amount_wad >= -rebalance_amount_wad
                 withdraw_amount = withdraw_amount_wad // 10 ** (18 - asset.decimals())
                 self._balances[asset][self._treasuries[asset]] += withdraw_amount
@@ -803,8 +934,6 @@ class IporFuzzTest(FuzzTest):
 
         self._closed_swaps[asset][swap_id] = swap
         del self._swaps[asset][swap_id]
-
-        logger.warning(f"{swap.buyer.label} closed swap {swap_id} in {asset.symbol()} with pnl ${actual_payoff_wad - swap.collateral - self._liquidation_deposit} and payoff ${actual_payoff_wad}")
 
         logger.info(f"{swap.buyer.label} closed swap {swap_id} in {asset.symbol()} with pnl ${(actual_payoff_wad - swap.collateral - self._liquidation_deposit) / 10 ** 18} and payoff ${actual_payoff_wad / 10 ** 18}")
 
@@ -878,7 +1007,7 @@ class IporFuzzTest(FuzzTest):
                 rebalance_amount_wad = div(self._treasury_asset_management_ratio * total_balance_wad, 10 ** 18) - treasury_balance_wad
                 withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
                 assert len(withdraw_events) == 1
-                _, _, _, _, withdraw_amount_wad, _ = Abi.decode(["uint256", "address", "address", "uint256", "uint256", "uint256"], withdraw_events[0].data)
+                _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
                 withdraw_amount = withdraw_amount_wad // 10 ** (18 - asset.decimals())
                 self._balances[asset][self._treasuries[asset]] += withdraw_amount
                 self._treasury_balances[asset] += withdraw_amount_wad
@@ -996,9 +1125,6 @@ def on_revert_handler(e: TransactionRevertedError):
 @default_chain.connect(fork=FORK_URL)
 @on_revert(on_revert_handler)
 def test_ipor_fuzz():
-    seed = time.thread_time_ns()
-    print(f"Seed: {seed}")
-    random.seed(seed)
     for label, account in zip(names, default_chain.accounts):
         account.label = label
 

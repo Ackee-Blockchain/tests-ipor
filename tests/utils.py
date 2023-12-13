@@ -1,13 +1,7 @@
 from typing import Union
 
 from wake.testing import Address, Account, default_chain, keccak256, Abi
-from pytypes.openzeppelin.contracts.proxy.ERC1967.ERC1967Proxy import ERC1967Proxy
-
-
-def deploy_with_proxy(contract):
-    impl = contract.deploy()
-    proxy = ERC1967Proxy.deploy(impl, b"")
-    return contract(proxy)
+from pytypes.source.contracts.ammeth.interfaces.IWETH9 import IWETH9
 
 
 def mint(token: Union[Address, Account], to: Union[Address, Account], amount: int):
@@ -28,6 +22,19 @@ def mint(token: Union[Address, Account], to: Union[Address, Account], amount: in
         # USDT
         total_supply_slot = 1
         balance_slot = int.from_bytes(keccak256(Abi.encode(["address", "uint256"], [to, 2])), byteorder="big")
+    elif token == Address("0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84"):
+        # stETH, mint shares instead of balance
+        total_supply_slot = 0xe3b4b636e601189b5f4c6742edf2538ac12bb61ed03e6da26949d69838fa447e
+        balance_slot = int.from_bytes(keccak256(Abi.encode(["address", "uint256"], [to, 0])), byteorder="big")
+    elif token == Address("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"):
+        # WETH
+        Account(to).balance += amount
+        IWETH9(token).deposit(value=amount, from_=to)
+        return
+    elif token == Address("0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"):
+        # wstETH
+        total_supply_slot = 2
+        balance_slot = int.from_bytes(keccak256(Abi.encode(["address", "uint256"], [to, 0])), byteorder="big")
     else:
         raise ValueError(f"Unknown token {token}")
 
