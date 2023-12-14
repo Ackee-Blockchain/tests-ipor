@@ -456,6 +456,7 @@ class StETHFuzzTest(FuzzTest):
         provider.balance += amount
 
         with default_chain.snapshot_and_revert():
+            default_chain.mine()
             exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 
@@ -489,6 +490,7 @@ class StETHFuzzTest(FuzzTest):
         asset.approve(self._router, amount, from_=provider)
 
         with default_chain.snapshot_and_revert():
+            default_chain.mine()
             exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 
@@ -531,6 +533,7 @@ class StETHFuzzTest(FuzzTest):
         amount = random_int(1, int(self._balances[self._ipst_eth][provider] * 1.1))
 
         with default_chain.snapshot_and_revert():
+            default_chain.mine()
             exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 

@@ -577,6 +577,7 @@ class IporFuzzTest(FuzzTest):
         asset.approve(self._router, amount, from_=provider)
 
         with default_chain.snapshot_and_revert():
+            default_chain.mine()
             ip_balance_timestamp = default_chain.blocks["latest"].timestamp
             ip_token = self._ip_tokens[asset]
             ip_balance = div(amount_wad * 10 ** 18, self._calculate_ip_exchange_rate(asset))
@@ -626,6 +627,7 @@ class IporFuzzTest(FuzzTest):
         amount = ip_token.balanceOf(provider)
 
         with default_chain.snapshot_and_revert():
+            default_chain.mine()
             exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
             exchange_rate = IAmmPoolsLens(self._router).getIpTokenExchangeRate(asset)
             expected_asset_amount_wad = div(
