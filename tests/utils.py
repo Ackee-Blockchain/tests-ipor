@@ -1,6 +1,6 @@
 from typing import Union
 
-from wake.testing import Address, Account, default_chain, keccak256, Abi
+from wake.testing import Address, Account, chain, keccak256, Abi
 from pytypes.source.contracts.ammeth.interfaces.IWETH9 import IWETH9
 
 
@@ -38,8 +38,8 @@ def mint(token: Union[Address, Account], to: Union[Address, Account], amount: in
     else:
         raise ValueError(f"Unknown token {token}")
 
-    old_total_supply = int.from_bytes(default_chain.chain_interface.get_storage_at(str(token), total_supply_slot), byteorder="big")
-    default_chain.chain_interface.set_storage_at(str(token), total_supply_slot, (old_total_supply + amount).to_bytes(32, "big"))
+    old_total_supply = int.from_bytes(chain.chain_interface.get_storage_at(str(token), total_supply_slot), byteorder="big")
+    chain.chain_interface.set_storage_at(str(token), total_supply_slot, (old_total_supply + amount).to_bytes(32, "big"))
 
-    old_balance = int.from_bytes(default_chain.chain_interface.get_storage_at(str(token), balance_slot), byteorder="big")
-    default_chain.chain_interface.set_storage_at(str(token), balance_slot, (old_balance + amount).to_bytes(32, "big"))
+    old_balance = int.from_bytes(chain.chain_interface.get_storage_at(str(token), balance_slot), byteorder="big")
+    chain.chain_interface.set_storage_at(str(token), balance_slot, (old_balance + amount).to_bytes(32, "big"))

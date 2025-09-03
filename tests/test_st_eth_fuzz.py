@@ -167,7 +167,7 @@ class StETHFuzzTest(FuzzTest):
         )
         logger.info("Contracts deployed")
         self._oracle = get_oracle()
-        self._oracle.addUpdater(default_chain.accounts[0])
+        self._oracle.addUpdater(chain.accounts[0])
 
         pools_lens = AmmPoolsLensStEth(self._router.getConfiguration().ammPoolsLensStEth)
 
@@ -191,10 +191,10 @@ class StETHFuzzTest(FuzzTest):
         self._closed_swaps = {}
         self._ipor_treasury = 0
 
-        for acc in default_chain.accounts:
+        for acc in chain.accounts:
             self._eth_balances[acc] = acc.balance
 
-        for acc in default_chain.accounts:
+        for acc in chain.accounts:
             assert self._ipst_eth.balanceOf(acc) == 0
             self._balances[self._ipst_eth][acc] = 0
 
@@ -209,9 +209,9 @@ class StETHFuzzTest(FuzzTest):
             1,  # rebalancing is not performed with stETH
         )
 
-        a = default_chain.accounts[0]
+        a = chain.accounts[0]
         for asset in [self._steth, self._weth, self._wsteth]:
-            for acc in default_chain.accounts:
+            for acc in chain.accounts:
                 self._balances[asset][acc] = asset.balanceOf(acc)
 
             if asset != self._wsteth:
@@ -240,19 +240,19 @@ class StETHFuzzTest(FuzzTest):
             IporTypes.SwapTenor.DAYS_90: {},
         }
 
-        t = default_chain.blocks["latest"].timestamp
+        t = chain.blocks["latest"].timestamp
         self._quasiIbtPrice = 0
         self._ipor_indexes = [0]
         self._times = [t]
         self._oracle.addAsset(self._steth, t)
 
-        default_chain.mine(lambda x: x + random_int(1, 10_000))
+        chain.mine(lambda x: x + random_int(1, 10_000))
 
         # start with anything between 0.1% and 10%
         self._update_ipor_index(random_int(10**15, 10**17))
 
     def pre_invariants(self) -> None:
-        latest_timestamp = default_chain.blocks["latest"].timestamp
+        latest_timestamp = chain.blocks["latest"].timestamp
 
         # close all swaps that expired
         swaps_to_close = []
@@ -267,10 +267,10 @@ class StETHFuzzTest(FuzzTest):
     def post_invariants(self) -> None:
         # roll forward time
         time_change = random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60)  # 1-20 days
-        default_chain.mine(lambda x: x + time_change)
+        chain.mine(lambda x: x + time_change)
 
     def _update_ipor_index(self, new_index: uint256):
-        t = default_chain.blocks["latest"].timestamp
+        t = chain.blocks["latest"].timestamp
         self._quasiIbtPrice += self._ipor_indexes[-1] * (t - self._times[-1])
         self._ipor_indexes.append(new_index)
         self._times.append(t)
@@ -324,7 +324,7 @@ class StETHFuzzTest(FuzzTest):
             pay_fixed_spread,
             min_pay_fixed_rate,
             20,
-            default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+            chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
             bytearray(),
         )
         receive_fixed_indicators = AmmTypes.RiskIndicatorsInputs(
@@ -334,7 +334,7 @@ class StETHFuzzTest(FuzzTest):
             receive_fixed_spread,
             max_receive_fixed_rate,
             20,
-            default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+            chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
             bytearray(),
         )
 
@@ -353,7 +353,7 @@ class StETHFuzzTest(FuzzTest):
         return dataclasses.replace(i, signature=bytearray(self._message_signer.sign_hash(h)))
 
     def _calculate_pnl_raw(self, swap: Swap, block: int):
-        payoff_timestamp = default_chain.blocks[block].timestamp
+        payoff_timestamp = chain.blocks[block].timestamp
         delta_time = payoff_timestamp - swap.open_timestamp
 
         interest_fixed = swap.notional / 10 ** 18 * math.exp(swap.fixed_rate / 10 ** 18 * delta_time / (365 * 24 * 60 * 60))
@@ -394,7 +394,7 @@ class StETHFuzzTest(FuzzTest):
     def _calculate_soap(self):
         expected_soap_pay_fixed = 0
         expected_soap_receive_fixed = 0
-        latest_block = default_chain.blocks["latest"].number
+        latest_block = chain.blocks["latest"].number
 
         for swap in self._swaps.values():
             if swap.pay_fixed:
@@ -433,7 +433,7 @@ class StETHFuzzTest(FuzzTest):
     @flow()
     def flow_provide_liquidity(self):
         provider = random_account()
-        beneficiary = random_account(predicate=lambda a: a != default_chain.accounts[0])
+        beneficiary = random_account(predicate=lambda a: a != chain.accounts[0])
         asset = random.choice([self._steth, self._weth, IERC20Metadata(Address.ZERO)])
         eth_amount = random_int(1, 100)
 
@@ -455,9 +455,9 @@ class StETHFuzzTest(FuzzTest):
     def _provide_liquidity_eth(self, amount: uint256, provider: Account, beneficiary: Account) -> None:
         provider.balance += amount
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
+        with chain.snapshot_and_revert():
+            chain.mine()
+            exchange_rate_timestamp = chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 
         tx = IAmmPoolsServiceStEth(self._router).provideLiquidityEth(beneficiary, amount, from_=provider, value=amount)
@@ -489,9 +489,9 @@ class StETHFuzzTest(FuzzTest):
             amount = self._steth_shares_to_balance(amount)
         asset.approve(self._router, amount, from_=provider)
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
+        with chain.snapshot_and_revert():
+            chain.mine()
+            exchange_rate_timestamp = chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 
         if asset == self._steth:
@@ -524,7 +524,7 @@ class StETHFuzzTest(FuzzTest):
 
     @flow()
     def flow_redeem_liquidity(self):
-        ipst_holders = [a for a in self._balances[self._ipst_eth].keys() if self._balances[self._ipst_eth][a] > 0 and a != default_chain.accounts[0]]
+        ipst_holders = [a for a in self._balances[self._ipst_eth].keys() if self._balances[self._ipst_eth][a] > 0 and a != chain.accounts[0]]
         if len(ipst_holders) == 0:
             return
 
@@ -532,9 +532,9 @@ class StETHFuzzTest(FuzzTest):
         provider = random.choice(ipst_holders)
         amount = random_int(1, int(self._balances[self._ipst_eth][provider] * 1.1))
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
+        with chain.snapshot_and_revert():
+            chain.mine()
+            exchange_rate_timestamp = chain.blocks["latest"].timestamp
             ip_exchange_rate = self._calculate_ip_exchange_rate()
 
             expected_steth_amount = div(ip_exchange_rate * amount, 10 ** 18)
@@ -576,7 +576,7 @@ class StETHFuzzTest(FuzzTest):
         leverage = random_int(self._min_leverage, max_leverage)
         asset = random.choice([self._steth, self._wsteth, self._weth, eth])
         opener = random_account()
-        beneficiary = random_account(predicate=lambda a: a != default_chain.accounts[0])
+        beneficiary = random_account(predicate=lambda a: a != chain.accounts[0])
         total_amount = random_int(1, 100) * 10 ** 18 + self._liquidation_deposit + self._publication_fee
 
         if asset != eth:
@@ -700,9 +700,9 @@ class StETHFuzzTest(FuzzTest):
             self._risk_indicators[swap.tenor][False],
         )
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            offered_rates_block = default_chain.blocks["latest"]
+        with chain.snapshot_and_revert():
+            chain.mine()
+            offered_rates_block = chain.blocks["latest"]
             offered_pay_fixed, offered_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(
                 self._steth, swap.tenor, swap.notional,
                 self._risk_indicators[swap.tenor][True],
@@ -723,14 +723,14 @@ class StETHFuzzTest(FuzzTest):
                 close_swap_risk_indicators,
             )
 
-        default_chain.set_next_block_timestamp(offered_rates_block.timestamp)
-        pending_timestamp = default_chain.blocks["pending"].timestamp
+        chain.set_next_block_timestamp(offered_rates_block.timestamp)
+        pending_timestamp = chain.blocks["pending"].timestamp
         remaining_time = swap.open_timestamp + tenor_length * 24 * 60 * 60 - pending_timestamp
         min_liquidation_threshold_buyer = div(swap.collateral * self._min_liquidation_threshold_buyer, 10 ** 18)
         min_liquidation_threshold_community = div(swap.collateral * self._min_liquidation_threshold_community, 10 ** 18)
 
         if 0 < remaining_time <= self._time_before_maturity_community or (abs(pnl) >= min_liquidation_threshold_community and abs(pnl) != swap.collateral):
-            closer = random_account(predicate=lambda a: a != default_chain.accounts[0])  # anyone except contract owner
+            closer = random_account(predicate=lambda a: a != chain.accounts[0])  # anyone except contract owner
             can_close = True
         else:
             closer = swap.buyer
@@ -893,7 +893,7 @@ class StETHFuzzTest(FuzzTest):
                 tx = IAmmSwapsLens(self._router).getPnlReceiveFixed(self._steth, swap_id, request_type="tx")
                 pnl = tx.return_value
 
-            closing_block = default_chain.blocks["latest"]
+            closing_block = chain.blocks["latest"]
             expected_pnl = self._calculate_pnl_raw(swap, closing_block.number)
 
             error = abs(expected_pnl - pnl)
@@ -902,10 +902,10 @@ class StETHFuzzTest(FuzzTest):
                 logger.error(f"PnL error: expected {expected_pnl} actual {pnl} difference {error / 10 ** 18} stETH")
 
 
-@default_chain.connect(fork=FORK_URL)
+@chain.connect(fork=FORK_URL)
 @on_revert(lambda e: print(e.tx.call_trace if e.tx else "Revert in call"))
 def test_steth_fuzz():
-    for label, account in zip(names, default_chain.accounts):
+    for label, account in zip(names, chain.accounts):
         account.label = label
 
     StETHFuzzTest().run(10, 10_000)

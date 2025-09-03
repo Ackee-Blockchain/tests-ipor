@@ -116,7 +116,7 @@ def setup_aave_dai(create3: Create3Deployer):
     )
     aave_strategy = ERC1967Proxy.deploy(
         aave_strategy,
-        Abi.encode_call(StrategyAave.initialize, [])
+        abi.encode_call(StrategyAave.initialize, [])
     )
 
     return aave_strategy, adai, dai, lending_pool_provider, aave_erc20, stk_aave, aave_incentives
@@ -137,7 +137,7 @@ def setup_aave_usdc(create3: Create3Deployer):
     )
     aave_strategy = ERC1967Proxy.deploy(
         aave_strategy,
-        Abi.encode_call(StrategyAave.initialize, [])
+        abi.encode_call(StrategyAave.initialize, [])
     )
 
     return aave_strategy, ausdc, usdc, lending_pool_provider, aave_erc20, stk_aave, aave_incentives
@@ -158,7 +158,7 @@ def setup_aave_usdt(create3: Create3Deployer):
     )
     aave_strategy = ERC1967Proxy.deploy(
         aave_strategy,
-        Abi.encode_call(StrategyAave.initialize, [])
+        abi.encode_call(StrategyAave.initialize, [])
     )
 
     return aave_strategy, ausdt, usdt, lending_pool_provider, aave_erc20, stk_aave, aave_incentives
@@ -177,7 +177,7 @@ def setup_compound_dai(create3: Create3Deployer):
     )
     compound_strategy = ERC1967Proxy.deploy(
         compound_strategy,
-        Abi.encode_call(StrategyCompound.initialize, [])
+        abi.encode_call(StrategyCompound.initialize, [])
     )
 
     return compound_strategy, cdai, dai, comp_erc20, comptroller
@@ -196,7 +196,7 @@ def setup_compound_usdc(create3: Create3Deployer):
     )
     compound_strategy = ERC1967Proxy.deploy(
         compound_strategy,
-        Abi.encode_call(StrategyCompound.initialize, [])
+        abi.encode_call(StrategyCompound.initialize, [])
     )
 
     return compound_strategy, cusdc, usdc, comp_erc20, comptroller
@@ -215,7 +215,7 @@ def setup_compound_usdt(create3: Create3Deployer):
     )
     compound_strategy = ERC1967Proxy.deploy(
         compound_strategy,
-        Abi.encode_call(StrategyCompound.initialize, [])
+        abi.encode_call(StrategyCompound.initialize, [])
     )
 
     return compound_strategy, cusdt, usdt, comp_erc20, comptroller
@@ -231,7 +231,7 @@ def setup_dsr_dai(create3: Create3Deployer):
     )
     dsr_strategy = ERC1967Proxy.deploy(
         dsr_strategy,
-        Abi.encode_call(StrategyDsrDai.initialize, [])
+        abi.encode_call(StrategyDsrDai.initialize, [])
     )
 
     return dsr_strategy, sdai, dai
@@ -323,7 +323,7 @@ def setup_oracle(
     oracle = IporOracle.deploy(usdt, 1 * 10 ** 18, usdc, 1 * 10 ** 18, dai, 1 * 10 ** 18, st_eth)  # IBT price should always be initialized to 1, see https://docs.ipor.io/interest-rate-derivatives/ibt
     proxy = ERC1967Proxy.deploy(oracle, b"")
     oracle = IporOracle(proxy)
-    timestamp = default_chain.blocks["latest"].timestamp
+    timestamp = chain.blocks["latest"].timestamp
     oracle.initialize([dai, usdc, usdt], [timestamp] * 3)
 
     return oracle
@@ -349,7 +349,7 @@ def setup_router(
 ):
     global oracle, risk_oracle
 
-    a = default_chain.accounts[0]
+    a = chain.accounts[0]
 
     # deploy libraries
     SoapIndicatorLogic.deploy()

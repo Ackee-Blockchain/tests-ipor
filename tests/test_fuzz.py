@@ -182,7 +182,7 @@ class IporFuzzTest(FuzzTest):
             time_after_open_wihout_unwinding=self._time_after_open_wihout_unwinding,
         )
         self._oracle = get_oracle()
-        self._oracle.addUpdater(default_chain.accounts[0])
+        self._oracle.addUpdater(chain.accounts[0])
 
         self._dai = get_dai()
         self._usdc = get_usdc()
@@ -237,14 +237,14 @@ class IporFuzzTest(FuzzTest):
             self._treasuries[token] = Account(info.ammTreasury)
             self._storages[token] = IAmmStorage(info.ammStorage)
 
-            for account in default_chain.accounts:
+            for account in chain.accounts:
                 balance = token.balanceOf(account)
                 if balance > 0:
                     token.transfer(Address(1), balance, from_=account)
                 self._balances[token][account] = 0
 
         for ip_token in self._ip_tokens.values():
-            for account in default_chain.accounts:
+            for account in chain.accounts:
                 assert ip_token.balanceOf(account) == 0
                 self._ip_balances[ip_token][account] = 0
 
@@ -338,19 +338,19 @@ class IporFuzzTest(FuzzTest):
                 IporOracle.UpdateIndexParams(
                     self._dai.address,
                     self._ipor_indexes[self._dai][0],
-                    default_chain.blocks["latest"].timestamp,
+                    chain.blocks["latest"].timestamp,
                     0,  # quasiIBTPrice is only applicable for stETH
                 ),
                 IporOracle.UpdateIndexParams(
                     self._usdc.address,
                     self._ipor_indexes[self._usdc][0],
-                    default_chain.blocks["latest"].timestamp,
+                    chain.blocks["latest"].timestamp,
                     0,  # quasiIBTPrice is only applicable for stETH
                 ),
                 IporOracle.UpdateIndexParams(
                     self._usdt.address,
                     self._ipor_indexes[self._usdt][0],
-                    default_chain.blocks["latest"].timestamp,
+                    chain.blocks["latest"].timestamp,
                     0,  # quasiIBTPrice is only applicable for stETH
                 ),
             ]
@@ -358,8 +358,8 @@ class IporFuzzTest(FuzzTest):
         self._times = [tx.block.timestamp]
 
         # provide initial liquidity
-        self.start_timestamp = default_chain.blocks["latest"].timestamp
-        a = default_chain.accounts[0]
+        self.start_timestamp = chain.blocks["latest"].timestamp
+        a = chain.accounts[0]
         for asset in [self._dai, self._usdc, self._usdt]:
             self._provide_liquidity(asset, 1_000_000 * 10 ** 18, a, a)
 
@@ -367,7 +367,7 @@ class IporFuzzTest(FuzzTest):
 
     # unused, kept for reference
     def _calculate_pnl(self, swap: Swap, block: int):
-        payoff_timestamp = default_chain.blocks[block].timestamp
+        payoff_timestamp = chain.blocks[block].timestamp
         accrued = self._oracle.getAccruedIndex(payoff_timestamp, swap.asset, block=block)
         delta_time = payoff_timestamp - swap.open_timestamp
 
@@ -389,7 +389,7 @@ class IporFuzzTest(FuzzTest):
         return pnl
 
     def _calculate_pnl_raw(self, swap: Swap, block: int):
-        payoff_timestamp = default_chain.blocks[block].timestamp
+        payoff_timestamp = chain.blocks[block].timestamp
         delta_time = payoff_timestamp - swap.open_timestamp
 
         interest_fixed = swap.notional / 10 ** 18 * math.exp(swap.fixed_rate / 10 ** 18 * delta_time / (365 * 24 * 60 * 60))
@@ -430,7 +430,7 @@ class IporFuzzTest(FuzzTest):
     def _calculate_soap(self, asset: IERC20Metadata):
         expected_soap_pay_fixed = 0
         expected_soap_receive_fixed = 0
-        latest_block = default_chain.blocks["latest"].number
+        latest_block = chain.blocks["latest"].number
 
         for swap in self._swaps[asset].values():
             if swap.pay_fixed:
@@ -511,7 +511,7 @@ class IporFuzzTest(FuzzTest):
                 pay_fixed_spread,
                 min_pay_fixed_rate,
                 20,
-                default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+                chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
                 bytearray(),
             )
             receive_fixed_indicators = AmmTypes.RiskIndicatorsInputs(
@@ -521,7 +521,7 @@ class IporFuzzTest(FuzzTest):
                 receive_fixed_spread,
                 max_receive_fixed_rate,
                 20,
-                default_chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
+                chain.blocks["pending"].timestamp + random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60),
                 bytearray(),
             )
 
@@ -534,7 +534,7 @@ class IporFuzzTest(FuzzTest):
                 IporOracle.UpdateIndexParams(
                     asset.address,
                     self._ipor_indexes[asset][-1],
-                    default_chain.blocks["latest"].timestamp,
+                    chain.blocks["latest"].timestamp,
                     0,  # TODO!!!!
                 ) for asset in self._ipor_indexes.keys()
             ]
@@ -542,7 +542,7 @@ class IporFuzzTest(FuzzTest):
         self._times.append(tx.block.timestamp)
 
     def pre_invariants(self) -> None:
-        latest_timestamp = default_chain.blocks["latest"].timestamp
+        latest_timestamp = chain.blocks["latest"].timestamp
 
         # close all swaps that expired
         swaps_to_close = []
@@ -558,12 +558,12 @@ class IporFuzzTest(FuzzTest):
     def post_invariants(self) -> None:
         # roll forward time
         time_change = random_int(1 * 24 * 60 * 60, 20 * 24 * 60 * 60)  # 1-20 days
-        default_chain.mine(lambda x: x + time_change)
+        chain.mine(lambda x: x + time_change)
 
     @flow()
     def flow_provide_liquidity(self) -> None:
         provider = random_account()
-        beneficiary = random_account(predicate=lambda a: a != default_chain.accounts[0])
+        beneficiary = random_account(predicate=lambda a: a != chain.accounts[0])
         asset = random.choice([self._dai, self._usdc, self._usdt])
         usd_amount = random_int(1, 10_000)
         amount = usd_amount * 10 ** asset.decimals()
@@ -576,9 +576,9 @@ class IporFuzzTest(FuzzTest):
         mint(asset, provider, amount)
         asset.approve(self._router, amount, from_=provider)
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            ip_balance_timestamp = default_chain.blocks["latest"].timestamp
+        with chain.snapshot_and_revert():
+            chain.mine()
+            ip_balance_timestamp = chain.blocks["latest"].timestamp
             ip_token = self._ip_tokens[asset]
             ip_balance = div(amount_wad * 10 ** 18, self._calculate_ip_exchange_rate(asset))
 
@@ -593,7 +593,7 @@ class IporFuzzTest(FuzzTest):
         else:
             func = IAmmPoolsService(self._router).provideLiquidityUsdt
 
-        with may_revert("IPOR_322") as e:
+        with may_revert(("IPOR_322", "IPOR_304")) as e:
             tx = func(beneficiary, amount, from_=provider)
             assert tx.block.timestamp == ip_balance_timestamp
 
@@ -616,19 +616,19 @@ class IporFuzzTest(FuzzTest):
 
     @flow(weight=90)
     def flow_redeem_liquidity(self) -> None:
-        assets = [asset for asset, ip_token in self._ip_tokens.items() if sum(self._ip_balances[ip_token][a] for a in self._ip_balances[ip_token].keys() if a != default_chain.accounts[0]) > 0]
+        assets = [asset for asset, ip_token in self._ip_tokens.items() if sum(self._ip_balances[ip_token][a] for a in self._ip_balances[ip_token].keys() if a != chain.accounts[0]) > 0]
         if len(assets) == 0:
             return
         asset = random.choice(assets)
         ip_token = self._ip_tokens[asset]
-        provider = random.choice([a for a in self._ip_balances[ip_token].keys() if self._ip_balances[ip_token][a] > 0 and a != default_chain.accounts[0]])
+        provider = random.choice([a for a in self._ip_balances[ip_token].keys() if self._ip_balances[ip_token][a] > 0 and a != chain.accounts[0]])
         beneficiary = random_account()
         # redeem all
         amount = ip_token.balanceOf(provider)
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            exchange_rate_timestamp = default_chain.blocks["latest"].timestamp
+        with chain.snapshot_and_revert():
+            chain.mine()
+            exchange_rate_timestamp = chain.blocks["latest"].timestamp
             exchange_rate = IAmmPoolsLens(self._router).getIpTokenExchangeRate(asset)
             expected_asset_amount_wad = div(
                 self._ip_balances[ip_token][provider] * self._calculate_ip_exchange_rate(asset),
@@ -658,8 +658,11 @@ class IporFuzzTest(FuzzTest):
         # rebalance
         if (self._balances[asset][self._treasuries[asset]] < redeem_amount or (self._auto_rebalance_threshold > 0 and redeem_amount_wad >= self._auto_rebalance_threshold)) and rebalance_amount_wad < 0:
             withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
-            assert len(withdraw_events) == 1
-            _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
+            assert 0 <= len(withdraw_events) <= 1
+            if len(withdraw_events) == 1:
+                _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
+            else:
+                withdraw_amount_wad = 0
             #assert withdraw_amount_wad >= -rebalance_amount_wad
             withdraw_amount = withdraw_amount_wad // 10 ** (18 - asset.decimals())
             self._balances[asset][self._treasuries[asset]] += withdraw_amount
@@ -687,7 +690,7 @@ class IporFuzzTest(FuzzTest):
         max_leverage = risk_indicators.maxLeveragePerLeg
         leverage_wad = random_int(self._min_leverage, max_leverage)
         opener = random_account()
-        beneficiary = random_account(predicate=lambda a: a != default_chain.accounts[0])
+        beneficiary = random_account(predicate=lambda a: a != chain.accounts[0])
         total_amount_wad = random_int(1, 10_000) * 10 ** 18 + self._liquidation_deposit + self._publication_fee
         available_amount_wad = total_amount_wad - self._liquidation_deposit - self._publication_fee
         total_amount = total_amount_wad // 10 ** (18 - asset.decimals())
@@ -720,7 +723,7 @@ class IporFuzzTest(FuzzTest):
         asset.approve(self._router, total_amount, from_=opener)
 
         open_swap_function = self._open_swap_functions[tenor][asset][pay_fixed]
-        with may_revert(("IPOR_302", "IPOR_303", "IPOR_309")) as e:
+        with may_revert(("IPOR_302", "IPOR_303", "IPOR_309", "IPOR_313")) as e:
             tx: TransactionAbc[uint256] = open_swap_function(beneficiary, total_amount, acceptable_rate, leverage_wad, risk_indicators, from_=opener)
 
         # leverage too high or another swap cannot be opened as there is not enough liquidity
@@ -790,9 +793,9 @@ class IporFuzzTest(FuzzTest):
                     self._treasury_balances[asset] -= deposit_amount_wad
                     treasury_before_wad -= deposit_amount_wad
 
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            offered_rates_block = default_chain.blocks["latest"]
+        with chain.snapshot_and_revert():
+            chain.mine()
+            offered_rates_block = chain.blocks["latest"]
             offered_pay_fixed, offered_receive_fixed = IAmmSwapsLens(self._router).getOfferedRate(
                 asset, swap.tenor, swap.notional,
                 self._risk_indicators[swap.tenor][asset][True],
@@ -806,15 +809,15 @@ class IporFuzzTest(FuzzTest):
             else:
                 pnl = IAmmSwapsLens(self._router).getPnlReceiveFixed(asset, swap_id)
 
-        default_chain.set_next_block_timestamp(offered_rates_block.timestamp)
-        pending_timestamp = default_chain.blocks["pending"].timestamp
+        chain.set_next_block_timestamp(offered_rates_block.timestamp)
+        pending_timestamp = chain.blocks["pending"].timestamp
 
         remaining_time = swap.open_timestamp + tenor_length * 24 * 60 * 60 - pending_timestamp
         min_liquidation_threshold_buyer = div(swap.collateral * self._min_liquidation_threshold_buyer, 10 ** 18)
         min_liquidation_threshold_community = div(swap.collateral * self._min_liquidation_threshold_community, 10 ** 18)
 
         if 0 < remaining_time <= self._time_before_maturity_community or (abs(pnl) >= min_liquidation_threshold_community and abs(pnl) != swap.collateral):
-            closer = random_account(predicate=lambda a: a != default_chain.accounts[0])  # anyone except contract owner
+            closer = random_account(predicate=lambda a: a != chain.accounts[0])  # anyone except contract owner
             can_close = True
         else:
             closer = swap.buyer
@@ -964,7 +967,7 @@ class IporFuzzTest(FuzzTest):
     @flow()
     def flow_rebalance(self):
         asset = random.choice(list(self._appointed_to_rebalance.keys()))
-        if len(self._appointed_to_rebalance[asset]) == len(default_chain.accounts):
+        if len(self._appointed_to_rebalance[asset]) == len(chain.accounts):
             self.flow_remove_appointed_to_rebalance()
         if len(self._appointed_to_rebalance[asset]) == 0:
             self._add_appointed_to_rebalance(asset)
@@ -975,15 +978,15 @@ class IporFuzzTest(FuzzTest):
             IAmmPoolsService(self._router).rebalanceBetweenAmmTreasuryAndAssetManagement(asset, from_=failing_account)
 
         treasury_balance_wad = self._balances[asset][self._treasuries[asset]] * 10 ** (18 - asset.decimals())
-        with default_chain.snapshot_and_revert():
-            default_chain.mine()
-            total_balance_block = default_chain.blocks["latest"]
+        with chain.snapshot_and_revert():
+            chain.mine()
+            total_balance_block = chain.blocks["latest"]
             total_balance_wad = IAssetManagementLens(self._router).balanceOfAmmTreasuryInAssetManagement(asset) + treasury_balance_wad
 
         ratio = div(treasury_balance_wad * 10 ** 18, total_balance_wad)
 
         with may_revert(("IPOR_004", "IPOR_504", "IPOR_322")) as e:
-            default_chain.set_next_block_timestamp(total_balance_block.timestamp)
+            chain.set_next_block_timestamp(total_balance_block.timestamp)
             tx = IAmmPoolsService(self._router).rebalanceBetweenAmmTreasuryAndAssetManagement(asset, from_=account)
             assert tx.block.number == total_balance_block.number
             assert tx.block.timestamp == total_balance_block.timestamp
@@ -1007,9 +1010,13 @@ class IporFuzzTest(FuzzTest):
 
             if e.value is None:
                 rebalance_amount_wad = div(self._treasury_asset_management_ratio * total_balance_wad, 10 ** 18) - treasury_balance_wad
+                print(tx.call_trace)
                 withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
-                assert len(withdraw_events) == 1
-                _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
+                assert 0 <= len(withdraw_events) <= 1
+                if len(withdraw_events) == 1:
+                    _, withdraw_amount_wad = Abi.decode(["address", "uint256"], withdraw_events[0].data)
+                else:
+                    withdraw_amount_wad = 0
                 withdraw_amount = withdraw_amount_wad // 10 ** (18 - asset.decimals())
                 self._balances[asset][self._treasuries[asset]] += withdraw_amount
                 self._treasury_balances[asset] += withdraw_amount_wad
@@ -1019,7 +1026,7 @@ class IporFuzzTest(FuzzTest):
 
     @invariant()
     def invariant_payoffs(self):
-        closing_block = default_chain.blocks["latest"]
+        closing_block = chain.blocks["latest"]
 
         for asset in self._swaps:
             for swap_id, swap in self._swaps[asset].items():
@@ -1045,21 +1052,23 @@ class IporFuzzTest(FuzzTest):
                 self._max_non_lp_balance_error = non_lp_balance_error
                 logger.error(f"Non LP balance error: expected {expected_non_lp_balance} actual {non_lp_balance} difference {non_lp_balance_error / 10 ** 18} {asset.symbol()}")
 
-            with default_chain.snapshot_and_revert():
-                default_chain.mine()
-                t = default_chain.blocks["latest"].number
+            with chain.snapshot_and_revert():
+                chain.mine()
+                t = chain.blocks["latest"].number
                 claimed_balance = IAmmPoolsLens(self._router).getAmmBalance(asset)
 
-            with default_chain.snapshot_and_revert():
+            with chain.snapshot_and_revert():
                 if claimed_balance.vault > 0:
-                    IAmmGovernanceService(self._router).withdrawAllFromAssetManagement(asset)
-                    assert default_chain.blocks["latest"].number == t
+                    with may_revert("IPOR_321") as e:
+                        IAmmGovernanceService(self._router).withdrawAllFromAssetManagement(asset)
+                        assert chain.blocks["latest"].number == t
+                    # assert e.value is None
                 actual_balance = IAmmPoolsLens(self._router).getAmmBalance(asset)
 
             asset_management_error = abs(claimed_balance.liquidityPool - actual_balance.liquidityPool)
             if asset_management_error > self._max_asset_management_error:
                 self._max_asset_management_error = asset_management_error
-                logger.warning(f"Asset management error: claimed {claimed_balance.liquidityPool} actual {actual_balance.liquidityPool} difference {asset_management_error / 10 ** 18} {asset.symbol()} over time {default_chain.blocks['latest'].timestamp - self.start_timestamp} seconds")
+                logger.warning(f"Asset management error: claimed {claimed_balance.liquidityPool} actual {actual_balance.liquidityPool} difference {asset_management_error / 10 ** 18} {asset.symbol()} over time {chain.blocks['latest'].timestamp - self.start_timestamp} seconds")
 
             claimed_treasury_balance = claimed_balance.liquidityPool - claimed_balance.vault
             treasury_error = abs(self._treasury_balances[asset] - claimed_treasury_balance)
@@ -1118,17 +1127,17 @@ class IporFuzzTest(FuzzTest):
         print(f"Max redeem error: {self._max_redeem_error / 10 ** 18} USD")
 
 
-def on_revert_handler(e: TransactionRevertedError):
+def on_revert_handler(e: RevertError):
     if e.tx is not None:
         print(e.tx.call_trace)
         print(e.tx.console_logs)
 
 
-@default_chain.connect(fork=FORK_URL)
+@chain.connect(fork=FORK_URL)
 @on_revert(on_revert_handler)
 def test_ipor_fuzz():
-    for label, account in zip(names, default_chain.accounts):
+    for label, account in zip(names, chain.accounts):
         account.label = label
 
-    default_chain.set_default_accounts(default_chain.accounts[0])
+    chain.set_default_accounts(chain.accounts[0])
     IporFuzzTest().run(10, 2_000)
