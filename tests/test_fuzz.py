@@ -6,6 +6,7 @@ from bisect import bisect_right
 from dataclasses import dataclass
 import time
 from typing import Callable, Any, Dict, Set, Tuple
+from ordered_set import OrderedSet
 
 from wake.testing import *
 from wake.testing.fuzzing import *
@@ -120,7 +121,7 @@ class IporFuzzTest(FuzzTest):
     _treasury_balances: Dict[IERC20Metadata, uint256]  # the part of _lp_balances that is kept in treasury and not sent to asset management
     _ipor_treasury_balances: Dict[IERC20Metadata, uint256]
     _closed_swaps: Dict[IERC20Metadata, Dict[uint32, Swap]]
-    _appointed_to_rebalance: Dict[IERC20Metadata, Set[Account]]
+    _appointed_to_rebalance: Dict[IERC20Metadata, OrderedSet[Account]]
 
     _max_payoff_error: int
     _max_ip_exchange_rate_error: float
@@ -226,9 +227,9 @@ class IporFuzzTest(FuzzTest):
             self._usdt: {},
         }
         self._appointed_to_rebalance = {
-            self._dai: set(),
-            self._usdc: set(),
-            self._usdt: set(),
+            self._dai: OrderedSet(),
+            self._usdc: OrderedSet(),
+            self._usdt: OrderedSet(),
         }
 
         for token in [self._dai, self._usdc, self._usdt]:
@@ -1010,7 +1011,6 @@ class IporFuzzTest(FuzzTest):
 
             if e.value is None:
                 rebalance_amount_wad = div(self._treasury_asset_management_ratio * total_balance_wad, 10 ** 18) - treasury_balance_wad
-                print(tx.call_trace)
                 withdraw_events = [e for e in tx.raw_events if len(e.topics) > 0 and e.topics[0] == IAssetManagement.Withdraw.selector]
                 assert 0 <= len(withdraw_events) <= 1
                 if len(withdraw_events) == 1:
